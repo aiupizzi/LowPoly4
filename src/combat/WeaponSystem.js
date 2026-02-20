@@ -1,7 +1,8 @@
 import * as THREE from 'three';
+import { GAME_BALANCE, getCurveValue } from '../config/gameBalance.js';
 
 export class WeaponSystem {
-  constructor({ camera, scene, chunkManager, heatSystem, explosionSystem, eventBus }) {
+  constructor({ camera, scene, chunkManager, heatSystem, explosionSystem, eventBus, settings = {} }) {
     this.camera = camera;
     this.scene = scene;
     this.chunkManager = chunkManager;
@@ -11,12 +12,26 @@ export class WeaponSystem {
     this.cooldown = 0;
     this.cooldownScale = 1;
     this.raycaster = new THREE.Raycaster();
+    this.keybindings = {
+      shoot: 'MouseLeft',
+      altFire: 'MouseRight',
+      ...(settings.keybindings || {})
+    };
 
     window.addEventListener('mousedown', (e) => {
-      if (e.button === 0) this.shoot();
-      if (e.button === 2) this.altFire();
+      if (e.button === 0 && this.keybindings.shoot === 'MouseLeft') this.shoot();
+      if (e.button === 2 && this.keybindings.altFire === 'MouseRight') this.altFire();
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.repeat) return;
+      if (e.code === this.keybindings.shoot) this.shoot();
+      if (e.code === this.keybindings.altFire) this.altFire();
     });
     window.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+
+  setControlSettings({ keybindings } = {}) {
+    if (keybindings) this.keybindings = { ...this.keybindings, ...keybindings };
   }
 
   shoot() {
@@ -44,8 +59,13 @@ export class WeaponSystem {
     if (!voxel) return;
 
     const center = new THREE.Vector3(voxel.x, voxel.y, voxel.z);
+    const heatLevel = this.heatSystem?.heat ?? 0;
     this.eventBus?.emit('weapon:shoot', { alt: true });
-    this.explosionSystem.explode(center, 4, 140);
+    this.explosionSystem.explode(
+      center,
+      getCurveValue(GAME_BALANCE.explosion.radiusByHeat, heatLevel),
+      getCurveValue(GAME_BALANCE.explosion.forceByHeat, heatLevel)
+    );
   }
 
   update(delta) {

@@ -1,13 +1,14 @@
 const ARCHETYPES = ['destroy', 'escape', 'checkpoint'];
 
 export class MissionSystem {
-  constructor({ heatSystem, vehicleController, policeAgent, chunkManager, weaponSystem, hud, state = {} }) {
+  constructor({ heatSystem, vehicleController, policeAgent, chunkManager, weaponSystem, hud, eventBus, state = {} }) {
     this.heatSystem = heatSystem;
     this.vehicleController = vehicleController;
     this.policeAgent = policeAgent;
     this.chunkManager = chunkManager;
     this.weaponSystem = weaponSystem;
     this.hud = hud;
+    this.eventBus = eventBus;
 
     this.tier = state.missionTier ?? 1;
     this.unlocks = {
@@ -131,6 +132,7 @@ export class MissionSystem {
     this.reachedChunks.clear();
     this.lastDestroyed = this.heatSystem.blocksDestroyed;
     this.toast(`Mission started: ${this.active.name}`);
+    this.eventBus?.emit('mission:started', { tier: this.tier, name: this.active.name });
   }
 
   toast(message) {
@@ -139,6 +141,7 @@ export class MissionSystem {
 
   fail(reason) {
     this.failedReason = reason;
+    this.eventBus?.emit('mission:failed', { reason, tier: this.tier });
     this.toast(`Mission failed: ${reason}`);
     this.nextMissionDelay = 3;
     this.active = null;
@@ -146,6 +149,7 @@ export class MissionSystem {
 
   complete() {
     this.toast(`Mission complete +$${this.reward}`);
+    this.eventBus?.emit('mission:completed', { tier: this.tier, reward: this.reward });
     this.nextMissionDelay = 2.5;
     this.active = null;
     this.tier += 1;
