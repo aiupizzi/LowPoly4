@@ -121,6 +121,12 @@ main.js                  # Scene bootstrap + dependency wiring
 
 ---
 
+## Downloads
+
+- Latest release: https://github.com/<org>/<repo>/releases/latest
+- Windows (.exe): https://github.com/<org>/<repo>/releases/latest
+- Optional integrity check: download the matching `.sha256` file from the release assets and verify locally.
+
 ## Getting started
 
 ### Prerequisites
@@ -154,6 +160,14 @@ npm run preview
 
 ---
 
+### Desktop (Electron) build
+
+```bash
+npm run dist:win
+```
+
+This command builds the Vite app and produces Windows distributables in `release/` (NSIS installer and portable `.exe`).
+
 ## Performance notes
 
 - Instanced rendering is used for voxel geometry to reduce draw calls.
@@ -181,6 +195,12 @@ npm run preview
 - Save slots and expanded progression economy.
 
 ---
+
+## Windows verification checklist
+
+- [ ] App launches in a desktop window without dev tools.
+- [ ] Controls work (`WASD`, `Space`, left click, right click).
+- [ ] Save/load works in the packaged desktop app.
 
 ## License
 
