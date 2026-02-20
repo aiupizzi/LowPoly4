@@ -8,6 +8,9 @@ export class VehicleController {
     this.player = player;
     this.chunkManager = chunkManager;
     this.speed = 0;
+    this.maxHealth = 100;
+    this.health = this.maxHealth;
+    this.accelerationMultiplier = 1;
     this.driveState = 'drive';
     this.input = { forward: false, backward: false, left: false, right: false, brake: false };
 
@@ -80,10 +83,28 @@ export class VehicleController {
     return 260;
   }
 
+  setAccelerationLevel(level = 0) {
+    this.accelerationMultiplier = 1 + level * 0.14;
+  }
+
+  setDurabilityLevel(level = 0) {
+    const healthRatio = this.maxHealth > 0 ? this.health / this.maxHealth : 1;
+    this.maxHealth = 100 + level * 45;
+    this.health = Math.max(0, Math.min(this.maxHealth, this.maxHealth * healthRatio));
+  }
+
+  applyDamage(amount) {
+    this.health = Math.max(0, this.health - amount);
+  }
+
+  repairFull() {
+    this.health = this.maxHealth;
+  }
+
   update() {
     const velocity = this.chassisBody.velocity;
     const speedAbs = velocity.length();
-    const engineForce = this.driveTorqueCurve(speedAbs);
+    const engineForce = this.driveTorqueCurve(speedAbs) * this.accelerationMultiplier;
 
     const accel = (this.input.forward ? -1 : 0) + (this.input.backward ? 1 : 0);
     const steer = (this.input.left ? 1 : 0) + (this.input.right ? -1 : 0);
@@ -109,6 +130,7 @@ export class VehicleController {
       const voxel = this.chunkManager.removeVoxelAt(Math.round(front.x), Math.round(front.y), Math.round(front.z));
       if (voxel) {
         this.chassisBody.applyImpulse(new CANNON.Vec3(-velocity.x * 10, 0, -velocity.z * 10));
+        this.applyDamage(Math.max(3, speedAbs * 0.9));
       }
     }
   }

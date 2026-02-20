@@ -1,5 +1,5 @@
 export class Game {
-  constructor({ camera, world, player, vehicleController, heatSystem, policeAgent, weaponSystem, explosionSystem, particlePool, postFX, hud, saveSystem, chunkManager, building }) {
+  constructor({ camera, world, player, vehicleController, heatSystem, policeAgent, weaponSystem, explosionSystem, particlePool, postFX, hud, saveSystem, chunkManager, building, missionSystem }) {
     this.camera = camera;
     this.world = world;
     this.player = player;
@@ -14,16 +14,33 @@ export class Game {
     this.saveSystem = saveSystem;
     this.chunkManager = chunkManager;
     this.building = building;
+    this.missionSystem = missionSystem;
 
     this.running = false;
     this.lastTime = performance.now();
     this.money = 0;
+    this.lastBlocksDestroyed = 0;
 
     const save = this.saveSystem.load();
     this.player.position.set(save.position?.x ?? 0, save.position?.y ?? 3, save.position?.z ?? 0);
     this.money = save.money ?? 0;
+    this.lastBlocksDestroyed = this.heatSystem.blocksDestroyed;
+
+    this.missionSystem.setWallet({
+      spendMoney: (amount) => this.spendMoney(amount)
+    });
 
     this.boundTick = this.tick.bind(this);
+  }
+
+  addMoney(amount) {
+    this.money += amount;
+  }
+
+  spendMoney(amount) {
+    if (this.money < amount) return false;
+    this.money -= amount;
+    return true;
   }
 
   start() {
@@ -32,7 +49,8 @@ export class Game {
     setInterval(() => {
       this.saveSystem.save({
         position: { x: this.player.position.x, y: this.player.position.y, z: this.player.position.z },
-        money: this.money
+        money: this.money,
+        ...this.missionSystem.getSaveData()
       });
     }, 2000);
   }
@@ -53,12 +71,29 @@ export class Game {
     this.explosionSystem.update(delta);
     this.particlePool.update(delta);
 
-    this.money = this.heatSystem.blocksDestroyed;
+    const destroyedDelta = this.heatSystem.blocksDestroyed - this.lastBlocksDestroyed;
+    if (destroyedDelta > 0) {
+      this.addMoney(destroyedDelta);
+      this.lastBlocksDestroyed = this.heatSystem.blocksDestroyed;
+    }
+
+    this.missionSystem.update(delta, {
+      addMoney: (amount) => this.addMoney(amount)
+    });
+
+    const missionState = this.missionSystem.getState();
     this.hud.update({
       heat: this.heatSystem.heat,
       speed: this.vehicleController.speed,
       blocksDestroyed: this.heatSystem.blocksDestroyed,
-      money: this.money
+      money: this.money,
+      mission: missionState,
+      failState: {
+        failedReason: missionState.failedReason,
+        arrestTimer: missionState.arrestTimer,
+        health: this.vehicleController.health
+      },
+      delta
     });
 
     this.postFX.render(delta);

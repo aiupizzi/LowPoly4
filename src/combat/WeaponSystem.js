@@ -8,6 +8,7 @@ export class WeaponSystem {
     this.heatSystem = heatSystem;
     this.explosionSystem = explosionSystem;
     this.cooldown = 0;
+    this.cooldownScale = 1;
     this.raycaster = new THREE.Raycaster();
 
     window.addEventListener('mousedown', (e) => {
@@ -19,7 +20,7 @@ export class WeaponSystem {
 
   shoot() {
     if (this.cooldown > 0) return;
-    this.cooldown = 0.08;
+    this.cooldown = 0.08 * this.cooldownScale;
 
     this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
     const voxel = this.chunkManager.raycastVoxel(this.raycaster);
@@ -38,5 +39,9 @@ export class WeaponSystem {
 
   update(delta) {
     this.cooldown = Math.max(0, this.cooldown - delta);
+  }
+
+  setCooldownUpgradeLevel(level = 0) {
+    this.cooldownScale = Math.max(0.45, 1 - level * 0.12);
   }
 }

@@ -11,6 +11,7 @@ export class PoliceAgent {
     this.chunkManager = chunkManager;
     this.steering = new Steering();
     this.units = [];
+    this.closestDistance = Infinity;
   }
 
   ensureUnits(count) {
@@ -23,9 +24,24 @@ export class PoliceAgent {
     }
   }
 
+  getClosestDistanceTo(position) {
+    if (!this.units.length) return Infinity;
+    let closest = Infinity;
+    this.units.forEach((unit) => {
+      const dx = unit.body.position.x - position.x;
+      const dz = unit.body.position.z - position.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist < closest) closest = dist;
+    });
+    return closest;
+  }
+
   update(delta, playerPosition) {
     const stars = this.heatSystem.heat;
-    if (stars <= 0) return;
+    if (stars <= 0) {
+      this.closestDistance = Infinity;
+      return;
+    }
 
     if (stars >= 1) this.ensureUnits(2);
     if (stars >= 3) this.ensureUnits(5);
@@ -50,5 +66,7 @@ export class PoliceAgent {
       unit.mesh.position.copy(unit.body.position);
       unit.mesh.quaternion.copy(unit.body.quaternion);
     });
+
+    this.closestDistance = this.getClosestDistanceTo(playerPosition);
   }
 }
