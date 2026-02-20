@@ -62,6 +62,28 @@ export class MissionSystem {
     };
   }
 
+
+  getMissionTargetPOI(playerPosition) {
+    if (!this.active || !playerPosition) return null;
+
+    if (this.active.type === 'destroy') {
+      const lm = this.chunkManager.getNearestLandmark(playerPosition);
+      if (!lm) return null;
+      return { id: 'mission-destroy', kind: 'mission', label: 'Mission: demolition zone', position: { x: lm.x, z: lm.z } };
+    }
+
+    if (this.active.type === 'escape') {
+      const px = playerPosition.x;
+      const pz = playerPosition.z;
+      return { id: 'mission-escape', kind: 'mission', label: 'Mission: lose heat', position: { x: px - 36, z: pz - 36 } };
+    }
+
+    const chunk = this.chunkManager.activeChunk;
+    const tx = (chunk.x + 2) * this.chunkManager.chunkSize + this.chunkManager.chunkSize * 0.5;
+    const tz = (chunk.z + 1) * this.chunkManager.chunkSize + this.chunkManager.chunkSize * 0.5;
+    return { id: 'mission-checkpoint', kind: 'mission', label: 'Mission checkpoint', position: { x: tx, z: tz } };
+  }
+
   getSaveData() {
     return {
       missionTier: this.tier,

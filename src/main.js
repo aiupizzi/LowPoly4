@@ -17,6 +17,7 @@ import { PostFX } from './vfx/PostFX.js';
 import { MissionSystem } from './gameplay/MissionSystem.js';
 import { FeedbackSystem } from './vfx/FeedbackSystem.js';
 import { AudioSystem } from './audio/AudioSystem.js';
+import { PickupSystem } from './world/PickupSystem.js';
 
 const app = document.querySelector('#app');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -69,7 +70,18 @@ const missionSystem = new MissionSystem({
   state: saveData
 });
 
-const game = new Game({
+let game;
+
+const pickupSystem = new PickupSystem({
+  scene,
+  eventBus,
+  vehicleController,
+  heatSystem,
+  chunkManager,
+  addMoney: (amount) => game?.addMoney(amount)
+});
+
+game = new Game({
   camera,
   world,
   player,
@@ -86,7 +98,8 @@ const game = new Game({
   building,
   missionSystem,
   feedbackSystem,
-  audioSystem
+  audioSystem,
+  pickupSystem
 });
 
 game.start();

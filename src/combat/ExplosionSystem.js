@@ -43,7 +43,7 @@ export class ExplosionSystem {
       force,
       destroyed
     });
-    if (destroyed > 0) this.eventBus?.emit('world:voxelDestroyed', { source: 'explosion', count: destroyed });
+    if (destroyed > 0) this.eventBus?.emit('world:voxelDestroyed', { source: 'explosion', count: destroyed, position: { x: center.x, y: center.y, z: center.z } });
   }
 
   update(delta) {
