@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { Steering } from './Steering.js';
+import { GAME_BALANCE, getCurveValue } from '../config/gameBalance.js';
 
 const ROLE_ORDER = ['chaser', 'flanker', 'blocker'];
 
@@ -78,19 +79,15 @@ export class PoliceAgent {
   }
 
   getDesiredUnitCount(heat, distanceToClosest) {
-    if (heat <= 0) return 0;
-    if (heat >= 5) return 7;
-    if (heat === 4) return 6;
-    if (heat === 3) return 5;
-    if (heat === 2) return 3;
-
-    if (distanceToClosest > 90) return 1;
-    return 2;
+    const baseline = getCurveValue(GAME_BALANCE.police.desiredUnitsByHeat, heat);
+    if (baseline <= 0) return 0;
+    if (distanceToClosest > 90) return Math.max(1, baseline - 1);
+    return baseline;
   }
 
   updateBudgets(delta, heat, desiredCount, distanceToClosest) {
     const farAway = distanceToClosest > 120;
-    const spawnRate = Math.max(0.3, 0.35 + heat * 0.3);
+    const spawnRate = getCurveValue(GAME_BALANCE.police.spawnRateByHeat, heat);
     const despawnRate = desiredCount < this.units.length || farAway ? 0.7 + Math.max(0, this.units.length - desiredCount) * 0.25 : 0.25;
 
     this.spawnBudget = Math.min(3, this.spawnBudget + delta * spawnRate);
@@ -310,7 +307,8 @@ export class PoliceAgent {
     const yawVariance = THREE.MathUtils.degToRad((Math.random() * 30 - 15));
     travelDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), yawVariance);
     this.chunkManager.spawnBlockadeAhead(playerPosition, travelDir);
-    this.blockadeTimer = 3.8 + Math.random() * 2.6;
+    const cooldown = getCurveValue(GAME_BALANCE.police.blockadeCooldownByHeat, heat);
+    this.blockadeTimer = cooldown + Math.random() * 1.2;
   }
 
   update(delta, playerPosition) {
@@ -360,7 +358,8 @@ export class PoliceAgent {
       }
 
       const target = this.getTargetForState(unit, context, idx, flankCount);
-      const maxForce = unit.state === 'pit' ? 18 * delta : unit.state === 'recover' ? 9 * delta : 14 * delta;
+      const aggression = getCurveValue(GAME_BALANCE.police.aggressionByHeat, heat);
+      const maxForce = (unit.state === 'pit' ? 18 : unit.state === 'recover' ? 9 : 14) * aggression * delta;
       const seek = unit.state === 'patrol'
         ? this.steering.arrive(unitPos, target, 9, maxForce)
         : this.steering.seek(unitPos, target, maxForce);

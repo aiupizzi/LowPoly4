@@ -1,18 +1,29 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
+import { GAME_BALANCE, getCurveValue } from '../config/gameBalance.js';
 
 export class VehicleController {
-  constructor({ scene, world, player, chunkManager, eventBus }) {
+  constructor({ scene, world, player, chunkManager, eventBus, settings = {}, heatSystem = null }) {
     this.scene = scene;
     this.world = world;
     this.player = player;
     this.chunkManager = chunkManager;
     this.eventBus = eventBus;
+    this.heatSystem = heatSystem;
     this.speed = 0;
     this.maxHealth = 100;
     this.health = this.maxHealth;
     this.accelerationMultiplier = 1;
     this.driveState = 'drive';
+    this.userSteeringSensitivity = settings.steeringSensitivity ?? 1;
+    this.keybindings = {
+      forward: 'KeyW',
+      backward: 'KeyS',
+      left: 'KeyA',
+      right: 'KeyD',
+      brake: 'Space',
+      ...(settings.keybindings || {})
+    };
     this.input = { forward: false, backward: false, left: false, right: false, brake: false };
     this.lastSpeedAbs = 0;
 
@@ -78,25 +89,33 @@ export class VehicleController {
 
   bindInput() {
     window.addEventListener('keydown', (e) => {
-      if (e.code === 'KeyW') this.input.forward = true;
-      if (e.code === 'KeyS') this.input.backward = true;
-      if (e.code === 'KeyA') this.input.left = true;
-      if (e.code === 'KeyD') this.input.right = true;
-      if (e.code === 'Space') this.input.brake = true;
+      if (e.code === this.keybindings.forward) this.input.forward = true;
+      if (e.code === this.keybindings.backward) this.input.backward = true;
+      if (e.code === this.keybindings.left) this.input.left = true;
+      if (e.code === this.keybindings.right) this.input.right = true;
+      if (e.code === this.keybindings.brake) this.input.brake = true;
     });
     window.addEventListener('keyup', (e) => {
-      if (e.code === 'KeyW') this.input.forward = false;
-      if (e.code === 'KeyS') this.input.backward = false;
-      if (e.code === 'KeyA') this.input.left = false;
-      if (e.code === 'KeyD') this.input.right = false;
-      if (e.code === 'Space') this.input.brake = false;
+      if (e.code === this.keybindings.forward) this.input.forward = false;
+      if (e.code === this.keybindings.backward) this.input.backward = false;
+      if (e.code === this.keybindings.left) this.input.left = false;
+      if (e.code === this.keybindings.right) this.input.right = false;
+      if (e.code === this.keybindings.brake) this.input.brake = false;
     });
   }
 
-  driveTorqueCurve(speedAbs) {
-    if (speedAbs < 5) return 380;
-    if (speedAbs < 16) return 620;
-    return 260;
+  driveTorqueCurve(speedAbs, heat = 0) {
+    const peakTorque = getCurveValue(GAME_BALANCE.vehicle.torqueByHeat, heat);
+    if (speedAbs < 5) return peakTorque * 0.62;
+    if (speedAbs < 16) return peakTorque;
+    return peakTorque * 0.45;
+  }
+
+  setControlSettings({ steeringSensitivity, keybindings } = {}) {
+    if (typeof steeringSensitivity === 'number') {
+      this.userSteeringSensitivity = Math.max(0.5, Math.min(2, steeringSensitivity));
+    }
+    if (keybindings) this.keybindings = { ...this.keybindings, ...keybindings };
   }
 
   setAccelerationLevel(level = 0) {
@@ -141,7 +160,8 @@ export class VehicleController {
   update(delta = 1 / 60) {
     const velocity = this.chassisBody.velocity;
     const speedAbs = velocity.length();
-    const engineForce = this.driveTorqueCurve(speedAbs) * this.accelerationMultiplier;
+    const difficultyLevel = this.heatSystem?.heat ?? 0;
+    const engineForce = this.driveTorqueCurve(speedAbs, difficultyLevel) * this.accelerationMultiplier;
 
     const accel = this.driveState === 'disabled' ? 0 : (this.input.forward ? -1 : 0) + (this.input.backward ? 1 : 0);
     const steer = this.driveState === 'disabled' ? 0 : (this.input.left ? 1 : 0) + (this.input.right ? -1 : 0);
@@ -149,10 +169,12 @@ export class VehicleController {
     this.vehicle.applyEngineForce(engineForce * accel, 2);
     this.vehicle.applyEngineForce(engineForce * accel, 3);
 
-    this.vehicle.setSteeringValue(0.45 * steer, 0);
-    this.vehicle.setSteeringValue(0.45 * steer, 1);
+    const steeringScale = getCurveValue(GAME_BALANCE.vehicle.steeringSensitivityByHeat, difficultyLevel) * this.userSteeringSensitivity;
+    this.vehicle.setSteeringValue(0.45 * steer * steeringScale, 0);
+    this.vehicle.setSteeringValue(0.45 * steer * steeringScale, 1);
 
-    const brakeForce = this.driveState === 'disabled' ? 18 : this.input.brake ? 14 : 0;
+    const baseBrake = getCurveValue(GAME_BALANCE.vehicle.brakingByHeat, difficultyLevel);
+    const brakeForce = this.driveState === 'disabled' ? 18 : this.input.brake ? baseBrake : 0;
     for (let i = 0; i < 4; i++) this.vehicle.setBrake(brakeForce, i);
 
     this.mesh.position.copy(this.chassisBody.position);

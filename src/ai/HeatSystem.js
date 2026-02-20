@@ -1,3 +1,5 @@
+import { GAME_BALANCE, getCurveValue } from '../config/gameBalance.js';
+
 export class HeatSystem {
   constructor(vehicleController) {
     this.vehicleController = vehicleController;
@@ -8,7 +10,8 @@ export class HeatSystem {
 
   reportDestruction(count = 1) {
     this.blocksDestroyed += count;
-    this.heat = Math.min(5, this.heat + 1);
+    const gain = getCurveValue(GAME_BALANCE.heat.gainPerDestruction, this.heat) * count;
+    this.heat = Math.min(GAME_BALANCE.heat.maxHeat, this.heat + gain);
   }
 
   triggerHeatReduction(duration = 8, rate = 0.75) {
@@ -17,10 +20,10 @@ export class HeatSystem {
   }
 
   update(delta) {
-    if (this.vehicleController.speed > 35) {
-      this.heat = Math.min(5, this.heat + delta * 0.25);
+    if (this.vehicleController.speed > GAME_BALANCE.heat.passiveGainSpeedThreshold) {
+      this.heat = Math.min(GAME_BALANCE.heat.maxHeat, this.heat + delta * getCurveValue(GAME_BALANCE.heat.passiveGainPerSecond, this.heat));
     } else {
-      this.heat = Math.max(0, this.heat - delta * 0.08);
+      this.heat = Math.max(0, this.heat - delta * getCurveValue(GAME_BALANCE.heat.decayPerSecond, this.heat));
     }
 
     if (this.heatReductionBuff.timer > 0) {
@@ -29,6 +32,6 @@ export class HeatSystem {
       if (this.heatReductionBuff.timer === 0) this.heatReductionBuff.rate = 0;
     }
 
-    this.heat = Math.round(this.heat);
+    this.heat = Math.max(0, Math.min(GAME_BALANCE.heat.maxHeat, this.heat));
   }
 }

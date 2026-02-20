@@ -11,6 +11,21 @@ const DEFAULT_SAVE = {
   worldMeta: {
     visitedChunks: [],
     discoveredLandmarks: []
+  },
+  settings: {
+    steeringSensitivity: 1,
+    keybindings: {
+      forward: 'KeyW',
+      backward: 'KeyS',
+      left: 'KeyA',
+      right: 'KeyD',
+      brake: 'Space',
+      shoot: 'MouseLeft',
+      altFire: 'MouseRight'
+    }
+  },
+  onboarding: {
+    tutorialCompleted: false
   }
 };
 
@@ -33,7 +48,19 @@ export class SaveSystem {
       ...parsed,
       position: { ...DEFAULT_SAVE.position, ...(parsed.position || {}) },
       unlocks: { ...DEFAULT_SAVE.unlocks, ...(parsed.unlocks || {}) },
-      worldMeta: { ...DEFAULT_SAVE.worldMeta, ...(parsed.worldMeta || {}) }
+      worldMeta: { ...DEFAULT_SAVE.worldMeta, ...(parsed.worldMeta || {}) },
+      settings: {
+        ...DEFAULT_SAVE.settings,
+        ...(parsed.settings || {}),
+        keybindings: {
+          ...DEFAULT_SAVE.settings.keybindings,
+          ...(parsed.settings?.keybindings || {})
+        }
+      },
+      onboarding: {
+        ...DEFAULT_SAVE.onboarding,
+        ...(parsed.onboarding || {})
+      }
     };
   }
 }

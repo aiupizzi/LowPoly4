@@ -7,6 +7,7 @@ export class HUD {
     this.indicatorElement = document.createElement('div');
     this.toasts = [];
     this.collisionWarningTTL = 0;
+    this.tutorialText = null;
 
     Object.assign(this.element.style, {
       position: 'absolute',
@@ -54,7 +55,15 @@ export class HUD {
 
     this.root.appendChild(this.element);
     this.root.appendChild(this.toastElement);
+    this.tutorialElement = document.createElement('div');
+    Object.assign(this.tutorialElement.style, {
+      position: 'absolute', left: '50%', bottom: '24px', transform: 'translateX(-50%)',
+      padding: '8px 12px', borderRadius: '8px', background: 'rgba(14,18,24,0.82)', border: '1px solid rgba(130,180,255,0.35)',
+      fontSize: '12px', color: '#d8ecff', fontFamily: 'monospace', pointerEvents: 'none', display: 'none'
+    });
+
     this.root.appendChild(this.indicatorElement);
+    this.root.appendChild(this.tutorialElement);
 
     this.eventBus?.on('vehicle:collision', ({ intensity = 0 }) => {
       if (intensity > 0.2) this.collisionWarningTTL = 1.2;
@@ -93,7 +102,13 @@ export class HUD {
     ].join('');
   }
 
-  update({ heat, speed, blocksDestroyed, money, mission, failState, delta = 0, vehicleHealth = 0, maxVehicleHealth = 100, policeDistance = Infinity, indicators = [] }) {
+  setTutorial(text) {
+    this.tutorialText = text;
+    this.tutorialElement.style.display = text ? 'block' : 'none';
+    this.tutorialElement.textContent = text || '';
+  }
+
+  update({ heat, speed, blocksDestroyed, money, mission, failState, combo = null, telemetry = null, delta = 0, vehicleHealth = 0, maxVehicleHealth = 100, policeDistance = Infinity, indicators = [] }) {
     if (delta > 0 && this.toasts.length) {
       this.toasts = this.toasts
         .map((toast) => ({ ...toast, ttl: toast.ttl - delta }))
@@ -132,9 +147,11 @@ export class HUD {
       `MISSION T${missionTier}: ${missionText}`,
       `PROG: ${missionProgress} | REWARD: $${missionReward}`,
       `${policeWarning}`,
+      combo ? `COMBO x${combo.multiplier.toFixed(1)} (${combo.chain} chain)` : 'COMBO x1.0',
       `BLOCKS: ${blocksDestroyed} | CREDITS: $${money}`,
       `${failLabel} | ARREST ${arrestTime}s`,
-      this.collisionWarningTTL > 0 ? '<span style="color:#ff8f8f">WARNING: HEAVY COLLISION</span>' : 'UPGRADES [1]ACC [2]WPN [3]ARMOR [4]COOLER'
+      telemetry ? `SESSION ${(telemetry.sessionLength || 0).toFixed(0)}s | DEATHS ${telemetry.deaths || 0} | ARRESTS ${telemetry.arrests || 0} | MSR ${telemetry.missionSuccessRate || 0}%` : 'SESSION --',
+      this.collisionWarningTTL > 0 ? '<span style="color:#ff8f8f">WARNING: HEAVY COLLISION</span>' : 'UPGRADES [1]ACC [2]WPN [3]ARMOR [4]COOLER | ESC PAUSE'
     ].join('<br>');
 
     this.renderIndicators(indicators);
