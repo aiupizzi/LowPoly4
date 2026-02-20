@@ -33,9 +33,8 @@ export class WeaponSystem {
 
     const removed = this.chunkManager.removeVoxelAt(voxel.x, voxel.y, voxel.z);
     if (removed) {
-      this.heatSystem.reportDestruction(1);
       this.eventBus?.emit('weapon:hit', { position: { x: voxel.x, y: voxel.y, z: voxel.z }, destroyed: 1 });
-      this.eventBus?.emit('world:voxelDestroyed', { source: 'weapon', count: 1 });
+      this.eventBus?.emit('world:voxelDestroyed', { source: 'weapon', count: 1, position: { x: voxel.x, y: voxel.y, z: voxel.z } });
     }
   }
 
@@ -47,7 +46,6 @@ export class WeaponSystem {
     const center = new THREE.Vector3(voxel.x, voxel.y, voxel.z);
     this.eventBus?.emit('weapon:shoot', { alt: true });
     this.explosionSystem.explode(center, 4, 140);
-    this.heatSystem.reportDestruction(2);
   }
 
   update(delta) {

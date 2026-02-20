@@ -15,7 +15,8 @@ export class Game {
     chunkManager,
     building,
     missionSystem,
-    feedbackSystem
+    feedbackSystem,
+    pickupSystem
   }) {
     this.camera = camera;
     this.world = world;
@@ -33,6 +34,7 @@ export class Game {
     this.building = building;
     this.missionSystem = missionSystem;
     this.feedbackSystem = feedbackSystem;
+    this.pickupSystem = pickupSystem;
 
     this.running = false;
     this.lastTime = performance.now();
@@ -40,12 +42,17 @@ export class Game {
     this.lastBlocksDestroyed = 0;
 
     const save = this.saveSystem.load();
+    this.chunkManager.hydratePersistenceData(save.worldMeta || {});
     this.player.position.set(save.position?.x ?? 0, save.position?.y ?? 3, save.position?.z ?? 0);
     this.money = save.money ?? 0;
     this.lastBlocksDestroyed = this.heatSystem.blocksDestroyed;
 
     this.missionSystem.setWallet({
       spendMoney: (amount) => this.spendMoney(amount)
+    });
+
+    this.pickupSystem?.eventBus?.on('world:voxelDestroyed', ({ count = 0 }) => {
+      if (count > 0) this.heatSystem.reportDestruction(count);
     });
 
     this.boundTick = this.tick.bind(this);
@@ -61,6 +68,30 @@ export class Game {
     return true;
   }
 
+  buildIndicators(playerPosition, missionState) {
+    const pois = [
+      ...this.chunkManager.getLandmarkPOIs(6).map((poi) => ({ ...poi, kind: 'landmark' })),
+      ...(this.pickupSystem?.getPOIs(4) || []).map((poi) => ({ ...poi, kind: 'pickup' }))
+    ];
+
+    const missionTarget = this.missionSystem.getMissionTargetPOI(playerPosition);
+    if (missionTarget) pois.unshift(missionTarget);
+
+    const heading = this.vehicleController.mesh?.rotation?.y || 0;
+    return pois
+      .map((poi) => {
+        const dx = poi.position.x - playerPosition.x;
+        const dz = poi.position.z - playerPosition.z;
+        const distance = Math.hypot(dx, dz);
+        const worldAngle = Math.atan2(dx, dz);
+        const direction = worldAngle - heading;
+        return { ...poi, distance, direction };
+      })
+      .filter((item) => item.distance < 220)
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, 6);
+  }
+
   start() {
     this.running = true;
     requestAnimationFrame(this.boundTick);
@@ -68,6 +99,7 @@ export class Game {
       this.saveSystem.save({
         position: { x: this.player.position.x, y: this.player.position.y, z: this.player.position.z },
         money: this.money,
+        worldMeta: this.chunkManager.getPersistenceData(),
         ...this.missionSystem.getSaveData()
       });
     }, 2000);
@@ -88,6 +120,7 @@ export class Game {
     this.weaponSystem.update(delta);
     this.explosionSystem.update(delta);
     this.particlePool.update(delta);
+    this.pickupSystem?.update(delta);
 
     const destroyedDelta = this.heatSystem.blocksDestroyed - this.lastBlocksDestroyed;
     if (destroyedDelta > 0) {
@@ -114,6 +147,7 @@ export class Game {
       vehicleHealth: this.vehicleController.health,
       maxVehicleHealth: this.vehicleController.maxHealth,
       policeDistance: this.policeAgent.closestDistance,
+      indicators: this.buildIndicators(this.player.position, missionState),
       delta
     });
 

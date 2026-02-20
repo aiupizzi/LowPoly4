@@ -4,6 +4,7 @@ export class HUD {
     this.eventBus = eventBus;
     this.element = document.createElement('div');
     this.toastElement = document.createElement('div');
+    this.indicatorElement = document.createElement('div');
     this.toasts = [];
     this.collisionWarningTTL = 0;
 
@@ -34,14 +35,36 @@ export class HUD {
       fontFamily: 'monospace'
     });
 
+    Object.assign(this.indicatorElement.style, {
+      position: 'absolute',
+      left: '16px',
+      bottom: '16px',
+      width: '340px',
+      minHeight: '88px',
+      borderRadius: '10px',
+      background: 'rgba(9,14,20,0.55)',
+      border: '1px solid rgba(130,180,255,0.25)',
+      color: '#d8ecff',
+      fontFamily: 'monospace',
+      fontSize: '11px',
+      lineHeight: '1.4',
+      padding: '8px 10px',
+      pointerEvents: 'none'
+    });
+
     this.root.appendChild(this.element);
     this.root.appendChild(this.toastElement);
+    this.root.appendChild(this.indicatorElement);
 
     this.eventBus?.on('vehicle:collision', ({ intensity = 0 }) => {
       if (intensity > 0.2) this.collisionWarningTTL = 1.2;
     });
 
-    this.update({ heat: 0, speed: 0, blocksDestroyed: 0, money: 0, mission: null, failState: null });
+    this.eventBus?.on('pickup:cashCollected', ({ amount = 0 }) => this.pushToast(`Collected cash +$${amount}`));
+    this.eventBus?.on('pickup:repairCollected', ({ amount = 0 }) => this.pushToast(`Repair kit +${Math.round(amount)} HP`));
+    this.eventBus?.on('pickup:heatReduced', () => this.pushToast('Heat signature reduced'));
+
+    this.update({ heat: 0, speed: 0, blocksDestroyed: 0, money: 0, mission: null, failState: null, indicators: [] });
   }
 
   pushToast(message) {
@@ -56,7 +79,21 @@ export class HUD {
       .join('');
   }
 
-  update({ heat, speed, blocksDestroyed, money, mission, failState, delta = 0, vehicleHealth = 0, maxVehicleHealth = 100, policeDistance = Infinity }) {
+  renderIndicators(indicators = []) {
+    const rows = indicators.slice(0, 6).map((item) => {
+      const angle = ((item.direction ?? 0) * 180) / Math.PI;
+      const arrow = angle > 35 ? '↱' : angle < -35 ? '↰' : '↑';
+      const color = item.kind === 'mission' ? '#ffda7f' : item.kind === 'landmark' ? '#72d9ff' : '#88f3a5';
+      return `<div style="display:flex;justify-content:space-between;gap:8px;color:${color}"><span>${arrow} ${item.label}</span><span>${Math.round(item.distance)}m</span></div>`;
+    });
+
+    this.indicatorElement.innerHTML = [
+      '<div style="margin-bottom:4px;color:#a6c8e8">NAV / POI</div>',
+      rows.length ? rows.join('') : '<div style="opacity:0.75">No nearby points of interest.</div>'
+    ].join('');
+  }
+
+  update({ heat, speed, blocksDestroyed, money, mission, failState, delta = 0, vehicleHealth = 0, maxVehicleHealth = 100, policeDistance = Infinity, indicators = [] }) {
     if (delta > 0 && this.toasts.length) {
       this.toasts = this.toasts
         .map((toast) => ({ ...toast, ttl: toast.ttl - delta }))
@@ -99,5 +136,7 @@ export class HUD {
       `${failLabel} | ARREST ${arrestTime}s`,
       this.collisionWarningTTL > 0 ? '<span style="color:#ff8f8f">WARNING: HEAVY COLLISION</span>' : 'UPGRADES [1]ACC [2]WPN [3]ARMOR [4]COOLER'
     ].join('<br>');
+
+    this.renderIndicators(indicators);
   }
 }

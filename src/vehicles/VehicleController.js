@@ -15,8 +15,6 @@ export class VehicleController {
     this.driveState = 'drive';
     this.input = { forward: false, backward: false, left: false, right: false, brake: false };
     this.lastSpeedAbs = 0;
-    this.pickupCooldown = 0;
-    this.repairPickups = [];
 
     this.buildVehicle();
     this.bindInput();
@@ -139,41 +137,6 @@ export class VehicleController {
     this.eventBus?.emit('vehicle:healthChanged', { health: this.health, maxHealth: this.maxHealth });
   }
 
-  maybeSpawnRepairPickup(delta) {
-    this.pickupCooldown = Math.max(0, this.pickupCooldown - delta);
-    if (this.pickupCooldown > 0 || this.health > this.maxHealth * 0.55 || this.repairPickups.length) return;
-
-    const pickup = new THREE.Mesh(
-      new THREE.OctahedronGeometry(0.65, 0),
-      new THREE.MeshStandardMaterial({ color: '#6dfaa1', emissive: '#205f40', emissiveIntensity: 0.7 })
-    );
-    const angle = Math.random() * Math.PI * 2;
-    const distance = 15 + Math.random() * 12;
-    pickup.position.set(
-      this.chassisBody.position.x + Math.cos(angle) * distance,
-      2.2,
-      this.chassisBody.position.z + Math.sin(angle) * distance
-    );
-    this.scene.add(pickup);
-    this.repairPickups.push({ mesh: pickup, amount: 30 });
-    this.pickupCooldown = 12;
-  }
-
-  updateRepairPickups(delta) {
-    const bodyPos = this.chassisBody.position;
-    this.repairPickups = this.repairPickups.filter((pickup) => {
-      pickup.mesh.rotation.y += delta * 2;
-      const dx = pickup.mesh.position.x - bodyPos.x;
-      const dz = pickup.mesh.position.z - bodyPos.z;
-      const dist = Math.hypot(dx, dz);
-      if (dist > 2.5) return true;
-
-      this.applyRepair(pickup.amount);
-      this.eventBus?.emit('pickup:repairCollected', { amount: pickup.amount });
-      this.scene.remove(pickup.mesh);
-      return false;
-    });
-  }
 
   update(delta = 1 / 60) {
     const velocity = this.chassisBody.velocity;
@@ -216,11 +179,9 @@ export class VehicleController {
         const damage = Math.max(3, speedAbs * 0.9);
         this.applyDamage(damage, 'impact');
         this.eventBus?.emit('vehicle:collision', { intensity: Math.min(1, damage / 20), speed: this.speed, voxelImpact: true });
-        this.eventBus?.emit('world:voxelDestroyed', { source: 'vehicle', count: 1 });
+        this.eventBus?.emit('world:voxelDestroyed', { source: 'vehicle', count: 1, position: { x: front.x, y: front.y, z: front.z } });
       }
     }
 
-    this.maybeSpawnRepairPickup(delta);
-    this.updateRepairPickups(delta);
   }
 }

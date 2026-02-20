@@ -7,6 +7,10 @@ const DEFAULT_SAVE = {
     durabilityLevel: 0,
     weaponCooldownLevel: 0,
     heatConsumables: 1
+  },
+  worldMeta: {
+    visitedChunks: [],
+    discoveredLandmarks: []
   }
 };
 
@@ -28,7 +32,8 @@ export class SaveSystem {
       ...DEFAULT_SAVE,
       ...parsed,
       position: { ...DEFAULT_SAVE.position, ...(parsed.position || {}) },
-      unlocks: { ...DEFAULT_SAVE.unlocks, ...(parsed.unlocks || {}) }
+      unlocks: { ...DEFAULT_SAVE.unlocks, ...(parsed.unlocks || {}) },
+      worldMeta: { ...DEFAULT_SAVE.worldMeta, ...(parsed.worldMeta || {}) }
     };
   }
 }

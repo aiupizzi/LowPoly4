@@ -3,6 +3,11 @@ import * as CANNON from 'cannon-es';
 
 const CHUNK_SIZE = 16;
 const RENDER_RADIUS = 2;
+const DISTRICTS = [
+  { name: 'industrial', densityBias: 0.08, heightScale: 1.25, minHeight: 3 },
+  { name: 'midtown', densityBias: 0.02, heightScale: 1, minHeight: 2 },
+  { name: 'residential', densityBias: -0.06, heightScale: 0.7, minHeight: 1 }
+];
 
 export class ChunkManager {
   constructor({ scene, world, particlePool }) {
@@ -14,6 +19,9 @@ export class ChunkManager {
     this.chunks = new Map();
     this.dynamicVoxelEntities = [];
     this.voxelMap = new Map();
+    this.landmarks = new Map();
+    this.discoveredLandmarks = new Set();
+    this.visitedChunks = new Set();
 
     this.geometry = new THREE.BoxGeometry(1, 1, 1);
     this.material = new THREE.MeshStandardMaterial({ color: '#5f6570', flatShading: true });
@@ -33,6 +41,7 @@ export class ChunkManager {
     const cx = Math.floor(position.x / this.chunkSize);
     const cz = Math.floor(position.z / this.chunkSize);
     this.activeChunk = { x: cx, z: cz };
+    this.markChunkVisited(cx, cz);
 
     const wanted = new Set();
     for (let x = cx - RENDER_RADIUS; x <= cx + RENDER_RADIUS; x++) {
@@ -53,19 +62,87 @@ export class ChunkManager {
     }
   }
 
+  markChunkVisited(chunkX, chunkZ) {
+    this.visitedChunks.add(this.chunkKey(chunkX, chunkZ));
+  }
+
+  hash2(x, z) {
+    const n = Math.sin(x * 127.1 + z * 311.7) * 43758.5453;
+    return n - Math.floor(n);
+  }
+
+  getDistrict(chunkX, chunkZ) {
+    const value = this.hash2(Math.floor(chunkX / 2), Math.floor(chunkZ / 2));
+    if (value > 0.7) return DISTRICTS[0];
+    if (value > 0.36) return DISTRICTS[1];
+    return DISTRICTS[2];
+  }
+
+  getRoadWeight(worldX, worldZ) {
+    const gridStep = 6;
+    const modX = Math.abs(worldX % gridStep);
+    const modZ = Math.abs(worldZ % gridStep);
+    const distToRoad = Math.min(modX, gridStep - modX, modZ, gridStep - modZ);
+    return Math.max(0, 1 - distToRoad / 1.1);
+  }
+
+  maybeCreateLandmark(chunkX, chunkZ, district) {
+    const chunkDist = Math.abs(chunkX) + Math.abs(chunkZ);
+    const spaced = chunkDist > 0 && chunkDist % 7 === 0;
+    const deterministic = this.hash2(chunkX * 0.73, chunkZ * 1.31) > 0.72;
+    if (!spaced || !deterministic) return null;
+
+    const centerX = chunkX * this.chunkSize + this.chunkSize * 0.5;
+    const centerZ = chunkZ * this.chunkSize + this.chunkSize * 0.5;
+    const height = Math.round(12 + this.hash2(chunkX + 3.1, chunkZ + 1.2) * 10 + district.heightScale * 4);
+    return {
+      id: `lm-${chunkX}:${chunkZ}`,
+      chunkKey: this.chunkKey(chunkX, chunkZ),
+      x: centerX,
+      z: centerZ,
+      radius: 4,
+      height,
+      district: district.name,
+      discovered: this.discoveredLandmarks.has(this.chunkKey(chunkX, chunkZ))
+    };
+  }
+
   spawnChunk(chunkX, chunkZ) {
     const voxels = [];
     const neonVoxels = [];
     const key = this.chunkKey(chunkX, chunkZ);
+    const district = this.getDistrict(chunkX, chunkZ);
+    const landmark = this.maybeCreateLandmark(chunkX, chunkZ, district);
+    if (landmark) {
+      landmark.discovered = true;
+      this.landmarks.set(key, landmark);
+      this.discoveredLandmarks.add(key);
+    }
 
     for (let lx = 0; lx < this.chunkSize; lx++) {
       for (let lz = 0; lz < this.chunkSize; lz++) {
         const wx = chunkX * this.chunkSize + lx;
         const wz = chunkZ * this.chunkSize + lz;
         const seed = Math.abs(Math.sin(wx * 12.9898 + wz * 78.233));
-        if (seed < 0.74) continue;
+        const roadWeight = this.getRoadWeight(wx, wz);
+        if (roadWeight > 0.4) continue;
 
-        const h = 2 + Math.floor(seed * 10);
+        const threshold = 0.74 - district.densityBias;
+        if (seed < threshold) continue;
+
+        let h = district.minHeight + Math.floor(seed * 10 * district.heightScale);
+
+        if (landmark) {
+          const dx = wx - landmark.x;
+          const dz = wz - landmark.z;
+          const dist = Math.hypot(dx, dz);
+          if (dist < landmark.radius * 0.9) {
+            h = landmark.height;
+          } else if (dist < landmark.radius * 1.2) {
+            h = Math.max(0, Math.floor(h * 0.4));
+          }
+        }
+
         for (let y = 0; y < h; y++) {
           const voxel = { x: wx, y, z: wz, neon: y === h - 1 && seed > 0.93 };
           voxels.push(voxel);
@@ -95,7 +172,7 @@ export class ChunkManager {
     });
     this.scene.add(neonMesh);
 
-    this.chunks.set(key, { voxels, neonVoxels, mesh, neonMesh });
+    this.chunks.set(key, { voxels, neonVoxels, mesh, neonMesh, district: district.name, landmark });
   }
 
   despawnChunk(key) {
@@ -228,5 +305,44 @@ export class ChunkManager {
     chunk.voxels.push(voxel);
     this.voxelMap.set(key, voxel);
     this.rebuildChunk(chunkKey);
+  }
+
+  getLandmarkPOIs(limit = 18) {
+    return Array.from(this.landmarks.values())
+      .slice(0, limit)
+      .map((item) => ({
+        id: item.id,
+        type: 'landmark',
+        label: `${item.district} landmark`,
+        position: { x: item.x, z: item.z },
+        discovered: true
+      }));
+  }
+
+  getNearestLandmark(position) {
+    let nearest = null;
+    let nearestDist = Infinity;
+    for (const item of this.landmarks.values()) {
+      const dx = item.x - position.x;
+      const dz = item.z - position.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearest = item;
+      }
+    }
+    return nearest;
+  }
+
+  getPersistenceData() {
+    return {
+      visitedChunks: [...this.visitedChunks],
+      discoveredLandmarks: [...this.discoveredLandmarks]
+    };
+  }
+
+  hydratePersistenceData(state = {}) {
+    this.visitedChunks = new Set(state.visitedChunks || []);
+    this.discoveredLandmarks = new Set(state.discoveredLandmarks || []);
   }
 }
