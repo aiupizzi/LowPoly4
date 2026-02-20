@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 
 export class WeaponSystem {
-  constructor({ camera, scene, chunkManager, heatSystem, explosionSystem }) {
+  constructor({ camera, scene, chunkManager, heatSystem, explosionSystem, eventBus }) {
     this.camera = camera;
     this.scene = scene;
     this.chunkManager = chunkManager;
     this.heatSystem = heatSystem;
     this.explosionSystem = explosionSystem;
+    this.eventBus = eventBus;
     this.cooldown = 0;
     this.cooldownScale = 1;
     this.raycaster = new THREE.Raycaster();
@@ -21,19 +22,31 @@ export class WeaponSystem {
   shoot() {
     if (this.cooldown > 0) return;
     this.cooldown = 0.08 * this.cooldownScale;
+    this.eventBus?.emit('weapon:shoot');
 
     this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
     const voxel = this.chunkManager.raycastVoxel(this.raycaster);
-    if (!voxel) return;
+    if (!voxel) {
+      this.eventBus?.emit('weapon:miss');
+      return;
+    }
+
     const removed = this.chunkManager.removeVoxelAt(voxel.x, voxel.y, voxel.z);
-    if (removed) this.heatSystem.reportDestruction(1);
+    if (removed) {
+      this.heatSystem.reportDestruction(1);
+      this.eventBus?.emit('weapon:hit', { position: { x: voxel.x, y: voxel.y, z: voxel.z }, destroyed: 1 });
+      this.eventBus?.emit('world:voxelDestroyed', { source: 'weapon', count: 1 });
+    }
   }
 
   altFire() {
     this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
     const voxel = this.chunkManager.raycastVoxel(this.raycaster);
     if (!voxel) return;
-    this.explosionSystem.explode(new THREE.Vector3(voxel.x, voxel.y, voxel.z), 4, 140);
+
+    const center = new THREE.Vector3(voxel.x, voxel.y, voxel.z);
+    this.eventBus?.emit('weapon:shoot', { alt: true });
+    this.explosionSystem.explode(center, 4, 140);
     this.heatSystem.reportDestruction(2);
   }
 

@@ -2,20 +2,38 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 
 export class VehicleController {
-  constructor({ scene, world, player, chunkManager }) {
+  constructor({ scene, world, player, chunkManager, eventBus }) {
     this.scene = scene;
     this.world = world;
     this.player = player;
     this.chunkManager = chunkManager;
+    this.eventBus = eventBus;
     this.speed = 0;
     this.maxHealth = 100;
     this.health = this.maxHealth;
     this.accelerationMultiplier = 1;
     this.driveState = 'drive';
     this.input = { forward: false, backward: false, left: false, right: false, brake: false };
+    this.lastSpeedAbs = 0;
+    this.pickupCooldown = 0;
+    this.repairPickups = [];
 
     this.buildVehicle();
     this.bindInput();
+    this.bindEvents();
+  }
+
+  bindEvents() {
+    this.eventBus?.on('explosion:detonated', ({ center, radius, force }) => {
+      const dx = this.chassisBody.position.x - center.x;
+      const dy = this.chassisBody.position.y - center.y;
+      const dz = this.chassisBody.position.z - center.z;
+      const dist = Math.hypot(dx, dy, dz);
+      if (dist > radius + 1.5) return;
+      const damage = Math.max(6, (1 - dist / Math.max(radius, 0.001)) * (force * 0.14));
+      this.applyDamage(damage, 'explosion');
+      this.eventBus?.emit('feedback:shake', { intensity: Math.min(1, damage / 16) });
+    });
   }
 
   buildVehicle() {
@@ -93,21 +111,77 @@ export class VehicleController {
     this.health = Math.max(0, Math.min(this.maxHealth, this.maxHealth * healthRatio));
   }
 
-  applyDamage(amount) {
+  applyDamage(amount, source = 'generic') {
+    const previous = this.health;
     this.health = Math.max(0, this.health - amount);
+    this.eventBus?.emit('vehicle:damaged', { source, amount, health: this.health, maxHealth: this.maxHealth });
+    this.eventBus?.emit('vehicle:healthChanged', { health: this.health, maxHealth: this.maxHealth });
+
+    if (previous > 0 && this.health <= 0) {
+      this.driveState = 'disabled';
+      this.eventBus?.emit('vehicle:disabled');
+    }
+  }
+
+  applyRepair(amount = 25) {
+    const previous = this.health;
+    this.health = Math.min(this.maxHealth, this.health + amount);
+    if (this.health > 0 && this.driveState === 'disabled') this.driveState = 'drive';
+    if (this.health !== previous) {
+      this.eventBus?.emit('vehicle:repair', { amount, health: this.health, maxHealth: this.maxHealth });
+      this.eventBus?.emit('vehicle:healthChanged', { health: this.health, maxHealth: this.maxHealth });
+    }
   }
 
   repairFull() {
     this.health = this.maxHealth;
+    this.driveState = 'drive';
+    this.eventBus?.emit('vehicle:healthChanged', { health: this.health, maxHealth: this.maxHealth });
   }
 
-  update() {
+  maybeSpawnRepairPickup(delta) {
+    this.pickupCooldown = Math.max(0, this.pickupCooldown - delta);
+    if (this.pickupCooldown > 0 || this.health > this.maxHealth * 0.55 || this.repairPickups.length) return;
+
+    const pickup = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.65, 0),
+      new THREE.MeshStandardMaterial({ color: '#6dfaa1', emissive: '#205f40', emissiveIntensity: 0.7 })
+    );
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 15 + Math.random() * 12;
+    pickup.position.set(
+      this.chassisBody.position.x + Math.cos(angle) * distance,
+      2.2,
+      this.chassisBody.position.z + Math.sin(angle) * distance
+    );
+    this.scene.add(pickup);
+    this.repairPickups.push({ mesh: pickup, amount: 30 });
+    this.pickupCooldown = 12;
+  }
+
+  updateRepairPickups(delta) {
+    const bodyPos = this.chassisBody.position;
+    this.repairPickups = this.repairPickups.filter((pickup) => {
+      pickup.mesh.rotation.y += delta * 2;
+      const dx = pickup.mesh.position.x - bodyPos.x;
+      const dz = pickup.mesh.position.z - bodyPos.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > 2.5) return true;
+
+      this.applyRepair(pickup.amount);
+      this.eventBus?.emit('pickup:repairCollected', { amount: pickup.amount });
+      this.scene.remove(pickup.mesh);
+      return false;
+    });
+  }
+
+  update(delta = 1 / 60) {
     const velocity = this.chassisBody.velocity;
     const speedAbs = velocity.length();
     const engineForce = this.driveTorqueCurve(speedAbs) * this.accelerationMultiplier;
 
-    const accel = (this.input.forward ? -1 : 0) + (this.input.backward ? 1 : 0);
-    const steer = (this.input.left ? 1 : 0) + (this.input.right ? -1 : 0);
+    const accel = this.driveState === 'disabled' ? 0 : (this.input.forward ? -1 : 0) + (this.input.backward ? 1 : 0);
+    const steer = this.driveState === 'disabled' ? 0 : (this.input.left ? 1 : 0) + (this.input.right ? -1 : 0);
 
     this.vehicle.applyEngineForce(engineForce * accel, 2);
     this.vehicle.applyEngineForce(engineForce * accel, 3);
@@ -115,7 +189,7 @@ export class VehicleController {
     this.vehicle.setSteeringValue(0.45 * steer, 0);
     this.vehicle.setSteeringValue(0.45 * steer, 1);
 
-    const brakeForce = this.input.brake ? 14 : 0;
+    const brakeForce = this.driveState === 'disabled' ? 18 : this.input.brake ? 14 : 0;
     for (let i = 0; i < 4; i++) this.vehicle.setBrake(brakeForce, i);
 
     this.mesh.position.copy(this.chassisBody.position);
@@ -124,14 +198,29 @@ export class VehicleController {
     this.speed = speedAbs * 2.23694;
     this.player.syncFromVehicle(this.chassisBody);
 
+    const speedDrop = Math.max(0, this.lastSpeedAbs - speedAbs);
+    if (speedDrop > 5.5 && speedAbs > 4) {
+      const intensity = Math.min(1, speedDrop / 20);
+      const damage = speedDrop * 0.9;
+      this.applyDamage(damage, 'collision');
+      this.eventBus?.emit('vehicle:collision', { intensity, speedDrop, speed: this.speed });
+    }
+    this.lastSpeedAbs = speedAbs;
+
     if (speedAbs > 10) {
       const p = this.chassisBody.position;
       const front = new THREE.Vector3(p.x, Math.max(0, p.y), p.z + Math.sign(this.chassisBody.velocity.z || 1) * 2);
       const voxel = this.chunkManager.removeVoxelAt(Math.round(front.x), Math.round(front.y), Math.round(front.z));
       if (voxel) {
         this.chassisBody.applyImpulse(new CANNON.Vec3(-velocity.x * 10, 0, -velocity.z * 10));
-        this.applyDamage(Math.max(3, speedAbs * 0.9));
+        const damage = Math.max(3, speedAbs * 0.9);
+        this.applyDamage(damage, 'impact');
+        this.eventBus?.emit('vehicle:collision', { intensity: Math.min(1, damage / 20), speed: this.speed, voxelImpact: true });
+        this.eventBus?.emit('world:voxelDestroyed', { source: 'vehicle', count: 1 });
       }
     }
+
+    this.maybeSpawnRepairPickup(delta);
+    this.updateRepairPickups(delta);
   }
 }

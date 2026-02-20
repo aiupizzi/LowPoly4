@@ -3,13 +3,14 @@ import * as CANNON from 'cannon-es';
 import { Steering } from './Steering.js';
 
 export class PoliceAgent {
-  constructor({ scene, world, heatSystem, vehicleController, chunkManager }) {
+  constructor({ scene, world, heatSystem, vehicleController, chunkManager, eventBus }) {
     this.scene = scene;
     this.world = world;
     this.heatSystem = heatSystem;
     this.vehicleController = vehicleController;
     this.chunkManager = chunkManager;
     this.steering = new Steering();
+    this.eventBus = eventBus;
     this.units = [];
     this.closestDistance = Infinity;
   }
@@ -40,6 +41,7 @@ export class PoliceAgent {
     const stars = this.heatSystem.heat;
     if (stars <= 0) {
       this.closestDistance = Infinity;
+      this.eventBus?.emit('police:proximity', { distance: this.closestDistance, heat: stars });
       return;
     }
 
@@ -68,5 +70,6 @@ export class PoliceAgent {
     });
 
     this.closestDistance = this.getClosestDistanceTo(playerPosition);
+    this.eventBus?.emit('police:proximity', { distance: this.closestDistance, heat: stars });
   }
 }

@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 
 export class ExplosionSystem {
-  constructor(world, chunkManager) {
+  constructor(world, chunkManager, eventBus) {
     this.world = world;
     this.chunkManager = chunkManager;
+    this.eventBus = eventBus;
     this.activeExplosions = [];
   }
 
@@ -20,6 +21,7 @@ export class ExplosionSystem {
       body.applyImpulse(new CANNON.Vec3(dir.x, Math.max(dir.y, 8), dir.z), body.position);
     }
 
+    let destroyed = 0;
     for (let x = -radius; x <= radius; x++) {
       for (let y = 0; y <= radius; y++) {
         for (let z = -radius; z <= radius; z++) {
@@ -28,11 +30,20 @@ export class ExplosionSystem {
           const wz = Math.round(center.z + z);
           const d = Math.hypot(x, y, z);
           if (d <= radius && Math.random() > d / radius) {
-            this.chunkManager.removeVoxelAt(wx, wy, wz);
+            const removed = this.chunkManager.removeVoxelAt(wx, wy, wz);
+            if (removed) destroyed += 1;
           }
         }
       }
     }
+
+    this.eventBus?.emit('explosion:detonated', {
+      center: center.clone(),
+      radius,
+      force,
+      destroyed
+    });
+    if (destroyed > 0) this.eventBus?.emit('world:voxelDestroyed', { source: 'explosion', count: destroyed });
   }
 
   update(delta) {
