@@ -1,9 +1,11 @@
 export class HUD {
-  constructor(root) {
+  constructor(root, eventBus) {
     this.root = root;
+    this.eventBus = eventBus;
     this.element = document.createElement('div');
     this.toastElement = document.createElement('div');
     this.toasts = [];
+    this.collisionWarningTTL = 0;
 
     Object.assign(this.element.style, {
       position: 'absolute',
@@ -17,7 +19,7 @@ export class HUD {
       lineHeight: '1.5',
       fontFamily: 'monospace',
       pointerEvents: 'none',
-      minWidth: '240px'
+      minWidth: '300px'
     });
 
     Object.assign(this.toastElement.style, {
@@ -34,6 +36,11 @@ export class HUD {
 
     this.root.appendChild(this.element);
     this.root.appendChild(this.toastElement);
+
+    this.eventBus?.on('vehicle:collision', ({ intensity = 0 }) => {
+      if (intensity > 0.2) this.collisionWarningTTL = 1.2;
+    });
+
     this.update({ heat: 0, speed: 0, blocksDestroyed: 0, money: 0, mission: null, failState: null });
   }
 
@@ -49,13 +56,15 @@ export class HUD {
       .join('');
   }
 
-  update({ heat, speed, blocksDestroyed, money, mission, failState, delta = 0 }) {
+  update({ heat, speed, blocksDestroyed, money, mission, failState, delta = 0, vehicleHealth = 0, maxVehicleHealth = 100, policeDistance = Infinity }) {
     if (delta > 0 && this.toasts.length) {
       this.toasts = this.toasts
         .map((toast) => ({ ...toast, ttl: toast.ttl - delta }))
         .filter((toast) => toast.ttl > 0);
       this.renderToasts();
     }
+
+    this.collisionWarningTTL = Math.max(0, this.collisionWarningTTL - delta);
 
     const stars = '★'.repeat(heat) + '☆'.repeat(Math.max(0, 5 - heat));
     const missionName = mission?.active ?? 'None';
@@ -66,17 +75,29 @@ export class HUD {
     const failLabel = failState?.failedReason ? `FAIL: ${failState.failedReason}` : 'FAIL: none';
     const arrestTime = failState?.arrestTimer != null ? failState.arrestTimer.toFixed(1) : '0.0';
 
+    const healthRatio = maxVehicleHealth > 0 ? Math.max(0, Math.min(1, vehicleHealth / maxVehicleHealth)) : 0;
+    const healthColor = healthRatio < 0.3 ? '#ff6161' : healthRatio < 0.55 ? '#ffd25f' : '#70f0a1';
+    const missionText = missionName === 'None' ? 'Idle - awaiting mission' : `${missionName}: ${missionObjective}`;
+
+    const policeWarning = Number.isFinite(policeDistance)
+      ? policeDistance < 12
+        ? `POLICE: DANGER (${policeDistance.toFixed(1)}m)`
+        : policeDistance < 28
+          ? `POLICE: Nearby (${policeDistance.toFixed(1)}m)`
+          : `POLICE: Tracking (${policeDistance.toFixed(1)}m)`
+      : 'POLICE: none';
+
     this.element.innerHTML = [
       `SPD: ${speed.toFixed(1)} MPH`,
       `HEAT: ${stars}`,
-      `HP: ${Math.max(0, failState?.health ?? 0).toFixed(0)}`,
-      `BLOCKS: ${blocksDestroyed}`,
-      `CREDITS: $${money}`,
-      `MISSION T${missionTier}: ${missionName}`,
-      `OBJ: ${missionObjective}`,
+      `VEH HP: ${Math.max(0, vehicleHealth).toFixed(0)} / ${maxVehicleHealth.toFixed(0)}`,
+      `<div style="margin:2px 0 6px;height:8px;border:1px solid rgba(255,255,255,0.2);border-radius:999px;overflow:hidden;background:rgba(0,0,0,0.45)"><div style="height:100%;width:${(healthRatio * 100).toFixed(1)}%;background:${healthColor};"></div></div>`,
+      `MISSION T${missionTier}: ${missionText}`,
       `PROG: ${missionProgress} | REWARD: $${missionReward}`,
+      `${policeWarning}`,
+      `BLOCKS: ${blocksDestroyed} | CREDITS: $${money}`,
       `${failLabel} | ARREST ${arrestTime}s`,
-      `UPGRADES [1]ACC [2]WPN [3]ARMOR [4]COOLER`
+      this.collisionWarningTTL > 0 ? '<span style="color:#ff8f8f">WARNING: HEAVY COLLISION</span>' : 'UPGRADES [1]ACC [2]WPN [3]ARMOR [4]COOLER'
     ].join('<br>');
   }
 }

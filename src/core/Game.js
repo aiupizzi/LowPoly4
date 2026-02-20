@@ -1,5 +1,22 @@
 export class Game {
-  constructor({ camera, world, player, vehicleController, heatSystem, policeAgent, weaponSystem, explosionSystem, particlePool, postFX, hud, saveSystem, chunkManager, building, missionSystem }) {
+  constructor({
+    camera,
+    world,
+    player,
+    vehicleController,
+    heatSystem,
+    policeAgent,
+    weaponSystem,
+    explosionSystem,
+    particlePool,
+    postFX,
+    hud,
+    saveSystem,
+    chunkManager,
+    building,
+    missionSystem,
+    feedbackSystem
+  }) {
     this.camera = camera;
     this.world = world;
     this.player = player;
@@ -15,6 +32,7 @@ export class Game {
     this.chunkManager = chunkManager;
     this.building = building;
     this.missionSystem = missionSystem;
+    this.feedbackSystem = feedbackSystem;
 
     this.running = false;
     this.lastTime = performance.now();
@@ -93,7 +111,16 @@ export class Game {
         arrestTimer: missionState.arrestTimer,
         health: this.vehicleController.health
       },
+      vehicleHealth: this.vehicleController.health,
+      maxVehicleHealth: this.vehicleController.maxHealth,
+      policeDistance: this.policeAgent.closestDistance,
       delta
+    });
+
+    this.feedbackSystem?.update(delta, {
+      health: this.vehicleController.health,
+      maxHealth: this.vehicleController.maxHealth,
+      heat: this.heatSystem.heat
     });
 
     this.postFX.render(delta);
