@@ -9,6 +9,6 @@ export class SaveSystem {
 
   load() {
     const raw = localStorage.getItem(this.key);
-    return raw ? JSON.parse(raw) : {};
+    return raw ? JSON.parse(raw) : { position: { x: 0, y: 3, z: 0 }, money: 0 };
   }
 }

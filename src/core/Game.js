@@ -1,8 +1,6 @@
 export class Game {
-  constructor({ scene, camera, renderer, world, player, vehicleController, heatSystem, policeAgent, weaponSystem, explosionSystem, particlePool, postFX, hud, saveSystem, chunkManager, building }) {
-    this.scene = scene;
+  constructor({ camera, world, player, vehicleController, heatSystem, policeAgent, weaponSystem, explosionSystem, particlePool, postFX, hud, saveSystem, chunkManager, building }) {
     this.camera = camera;
-    this.renderer = renderer;
     this.world = world;
     this.player = player;
     this.vehicleController = vehicleController;
@@ -17,21 +15,26 @@ export class Game {
     this.chunkManager = chunkManager;
     this.building = building;
 
-    this.clock = 0;
     this.running = false;
     this.lastTime = performance.now();
+    this.money = 0;
+
+    const save = this.saveSystem.load();
+    this.player.position.set(save.position?.x ?? 0, save.position?.y ?? 3, save.position?.z ?? 0);
+    this.money = save.money ?? 0;
 
     this.boundTick = this.tick.bind(this);
-    this.saveSystem.load();
   }
 
   start() {
     this.running = true;
     requestAnimationFrame(this.boundTick);
-  }
-
-  stop() {
-    this.running = false;
+    setInterval(() => {
+      this.saveSystem.save({
+        position: { x: this.player.position.x, y: this.player.position.y, z: this.player.position.z },
+        money: this.money
+      });
+    }, 2000);
   }
 
   tick(now) {
@@ -39,26 +42,26 @@ export class Game {
 
     const delta = Math.min((now - this.lastTime) / 1000, 0.1);
     this.lastTime = now;
-    this.clock += delta;
 
     this.world.update(delta);
-    this.chunkManager.update(this.player.position);
-    this.player.update(delta);
     this.vehicleController.update(delta);
+    this.player.update(delta);
+    this.chunkManager.update(this.player.position);
     this.heatSystem.update(delta);
     this.policeAgent.update(delta, this.player.position);
     this.weaponSystem.update(delta);
     this.explosionSystem.update(delta);
     this.particlePool.update(delta);
-    this.postFX.render(delta);
 
+    this.money = this.heatSystem.blocksDestroyed;
     this.hud.update({
-      fps: Math.round(1 / Math.max(delta, 0.0001)),
       heat: this.heatSystem.heat,
       speed: this.vehicleController.speed,
-      time: this.clock
+      blocksDestroyed: this.heatSystem.blocksDestroyed,
+      money: this.money
     });
 
+    this.postFX.render(delta);
     requestAnimationFrame(this.boundTick);
   }
 }
