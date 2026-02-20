@@ -13,6 +13,7 @@ import { HUD } from './ui/HUD.js';
 import { SaveSystem } from './state/SaveSystem.js';
 import { ParticlePool } from './vfx/ParticlePool.js';
 import { PostFX } from './vfx/PostFX.js';
+import { MissionSystem } from './gameplay/MissionSystem.js';
 
 const app = document.querySelector('#app');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -50,7 +51,17 @@ const weaponSystem = new WeaponSystem({ camera, scene, chunkManager, heatSystem,
 const postFX = new PostFX({ renderer, scene, camera });
 const hud = new HUD(app);
 const saveSystem = new SaveSystem();
+const saveData = saveSystem.load();
 const building = new Building(chunkManager);
+const missionSystem = new MissionSystem({
+  heatSystem,
+  vehicleController,
+  policeAgent,
+  chunkManager,
+  weaponSystem,
+  hud,
+  state: saveData
+});
 
 const game = new Game({
   camera,
@@ -66,7 +77,8 @@ const game = new Game({
   hud,
   saveSystem,
   chunkManager,
-  building
+  building,
+  missionSystem
 });
 
 game.start();
