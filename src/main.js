@@ -21,18 +21,18 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 app.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color('#20242d');
+scene.background = new THREE.Color('#151a21');
 
-const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 500);
+const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.set(0, 12, 18);
 
 scene.add(new THREE.AmbientLight('#ffffff', 0.8));
-const dir = new THREE.DirectionalLight('#fff8df', 1.2);
+const dir = new THREE.DirectionalLight('#fff8df', 1.4);
 dir.position.set(20, 30, 10);
 scene.add(dir);
 
 const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(220, 220),
+  new THREE.PlaneGeometry(1200, 1200),
   new THREE.MeshStandardMaterial({ color: '#2d3642', roughness: 1 })
 );
 ground.rotation.x = -Math.PI / 2;
@@ -40,22 +40,20 @@ scene.add(ground);
 
 const world = new World({ scene });
 const player = new Player(scene, camera);
-const vehicleController = new VehicleController(player);
+const particlePool = new ParticlePool(scene);
+const chunkManager = new ChunkManager({ scene, world, particlePool });
+const vehicleController = new VehicleController({ scene, world, player, chunkManager });
 const heatSystem = new HeatSystem(vehicleController);
-const policeAgent = new PoliceAgent(heatSystem);
-const weaponSystem = new WeaponSystem();
-const explosionSystem = new ExplosionSystem();
-const particlePool = new ParticlePool();
+const policeAgent = new PoliceAgent({ scene, world, heatSystem, vehicleController, chunkManager });
+const explosionSystem = new ExplosionSystem(world, chunkManager);
+const weaponSystem = new WeaponSystem({ camera, scene, chunkManager, heatSystem, explosionSystem });
 const postFX = new PostFX({ renderer, scene, camera });
 const hud = new HUD(app);
 const saveSystem = new SaveSystem();
-const chunkManager = new ChunkManager();
-const building = new Building(scene);
+const building = new Building(chunkManager);
 
 const game = new Game({
-  scene,
   camera,
-  renderer,
   world,
   player,
   vehicleController,
